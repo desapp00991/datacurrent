@@ -85,16 +85,14 @@ only to the stored HTTPS Paystack checkout URL with `Cache-Control: no-store`
 and `Referrer-Policy: no-referrer`. The handoff token contains no Site A
 transaction or user identifiers.
 
-## Railway storage
+## Render and Supabase storage
 
-Mount the Railway Volume at `/app/data` and set:
-
-```text
-PAYMENT_DATA_FILE=/app/data/payment-service.json
-DATA_BUNDLE_DATA_FILE=/app/data/data-bundles.json
-```
-
-Do not use `/data` unless the Railway Volume is mounted at that exact path.
+Production persistence uses Supabase PostgreSQL through `DATABASE_URL`; the
+application refuses to start in production without it. Run `npm run db:migrate`
+once, then use `npm run db:import` if the local JSON ledgers contain records.
+See [RENDER_SUPABASE_SETUP.md](RENDER_SUPABASE_SETUP.md) for the exact Render
+environment variables, backup, import, and verification steps. The JSON files
+remain useful only as local test/import sources.
 
 Bundle purchases use their own `PULSE_DATA` metadata, references, and
 `data/data-bundles.json` file. They do not write to Phantom Cards data.

@@ -1,6 +1,5 @@
-const fs = require('node:fs');
-const path = require('node:path');
 const crypto = require('node:crypto');
+const storage = require('./storage');
 
 const NETWORKS = Object.freeze({
   mtn: { label: 'MTN Ghana', rate: 4 },
@@ -16,25 +15,15 @@ const makeId = (prefix) => `${prefix}_${crypto.randomBytes(12).toString('hex')}`
 const safeText = (value, max = 200) => String(value || '').trim().slice(0, max);
 
 function filePath() {
-  return process.env.DATA_BUNDLE_DATA_FILE || path.join(__dirname, 'data/data-bundles.json');
+  return storage.bundleFile();
 }
 
 function loadStore() {
-  const file = filePath();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  if (!fs.existsSync(file)) return { orders: [], requestIds: [] };
-  try {
-    const value = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return { orders: Array.isArray(value.orders) ? value.orders : [], requestIds: Array.isArray(value.requestIds) ? value.requestIds : [] };
-  } catch {
-    return { orders: [], requestIds: [] };
-  }
+  return storage.loadBundle();
 }
 
 function saveStore(store) {
-  const file = filePath();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(store, null, 2));
+  storage.saveBundle(store);
 }
 
 function json(res, status, value) {

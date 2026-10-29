@@ -1,4 +1,4 @@
-const http=require('node:http'),crypto=require('node:crypto'),fs=require('node:fs'),path=require('node:path'),{Readable}=require('node:stream'),{PAYSTACK_PAYMENT_EMAILS,isAllowedPaystackPaymentEmail}=require('./payment-config'),ROOT=__dirname;
+const http=require('node:http'),crypto=require('node:crypto'),fs=require('node:fs'),path=require('node:path'),{Readable}=require('node:stream'),{PAYSTACK_PAYMENT_EMAILS,isAllowedPaystackPaymentEmail}=require('./payment-config'),storage=require('./storage'),ROOT=__dirname;
 const { createBundleRoute, handleBundleWebhook } = require('./bundle-service');
 const bundleRoute = createBundleRoute({
   getBase: () => (process.env.SITE_B_BASE_URL || `http://127.0.0.1:${process.env.PORT || 4000}`).replace(/\/$/, ''),
@@ -17,6 +17,15 @@ function servePublicSite(r,pathname){
 }
 const createHttpServer=http.createServer;
 http.createServer=(handler)=>createHttpServer(async(req,res)=>{
+  const end=res.end.bind(res);
+  res.end=(...args)=>{
+    if(!storage.usePostgres())return end(...args);
+    storage.flush().then(()=>end(...args)).catch(()=>{
+      if(!res.headersSent)res.writeHead(503,{'content-type':'application/json','cache-control':'no-store'});
+      end(JSON.stringify({error:'Persistent storage is unavailable.'}));
+    });
+    return res;
+  };
   const pathname=new URL(req.url,'http://localhost').pathname;
   if(req.method==='GET'&&servePublicSite(res,pathname))return;
   if(req.method==='POST'&&pathname==='/api/v1/webhooks/paystack'){
@@ -77,16 +86,10 @@ const eq=(a,b)=>{const x=Buffer.from(String(a)),y=Buffer.from(String(b));return 
 const read=async q=>{const c=[];for await(const x of q)c.push(x);return Buffer.concat(c)};
 
 function load(){
-  fs.mkdirSync(path.dirname(DATA),{recursive:true});
-  if(!fs.existsSync(DATA))return{transactions:[],webhookEvents:[],requestIds:[]};
-  const d=JSON.parse(fs.readFileSync(DATA));
-  return{transactions:d.transactions||[],webhookEvents:d.webhookEvents||[],requestIds:d.requestIds||[]};
+  return storage.loadPayment();
 }
 function save(d){
-  const directory=path.dirname(DATA),temporary=path.join(directory,`.${path.basename(DATA)}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`);
-  fs.mkdirSync(directory,{recursive:true});
-  try{fs.writeFileSync(temporary,JSON.stringify(d,null,2),{mode:0o600});fs.renameSync(temporary,DATA)}
-  finally{if(fs.existsSync(temporary))fs.rmSync(temporary,{force:true})}
+  storage.savePayment(d);
 }
 function out(r,s,x){r.writeHead(s,{'content-type':'application/json','cache-control':'no-store','x-content-type-options':'nosniff'});r.end(JSON.stringify(x))}
 
@@ -466,4 +469,11 @@ const callbackRetryTimer=setInterval(()=>{retryPendingCallbacks().catch(()=>{})}
 const paymentReconciliationTimer=setInterval(()=>{reconcilePendingPayments().catch(()=>{})},PAYMENT_RECONCILIATION_INTERVAL_MS);
 callbackRetryTimer.unref();
 paymentReconciliationTimer.unref();
-http.createServer(route).listen(PORT,()=>console.log('Payment service: '+BASE));
+async function start(){
+  await storage.initialize();
+  const server=http.createServer(route).listen(PORT,()=>console.log('Payment service: '+BASE));
+  const shutdown=async()=>{clearInterval(callbackRetryTimer);clearInterval(paymentReconciliationTimer);server.close();await storage.close();process.exit(0)};
+  process.once('SIGTERM',shutdown);
+  process.once('SIGINT',shutdown);
+}
+start().catch(error=>{console.error(`Storage initialization failed: ${error.message}`);process.exit(1)});
