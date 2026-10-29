@@ -20,6 +20,7 @@ http.createServer=(handler)=>createHttpServer(async(req,res)=>{
   const end=res.end.bind(res);
   res.end=(...args)=>{
     if(!storage.usePostgres())return end(...args);
+    res.siteBResponseQueued=true;
     storage.flush().then(()=>end(...args)).catch(()=>{
       if(!res.headersSent)res.writeHead(503,{'content-type':'application/json','cache-control':'no-store'});
       end(JSON.stringify({error:'Persistent storage is unavailable.'}));
@@ -45,7 +46,7 @@ http.createServer=(handler)=>createHttpServer(async(req,res)=>{
     return handleAdminReconciliation(req,res,raw);
   }
   await bundleRoute(req,res);
-  if(res.writableEnded)return;
+  if(res.siteBResponseQueued||res.writableEnded)return;
   return handler(req,res);
 });
 for(const l of(fs.existsSync(path.join(ROOT,'.env'))?fs.readFileSync(path.join(ROOT,'.env'),'utf8'):'').split(/\r?\n/)){const i=l.indexOf('=');if(i>0&&!l.trim().startsWith('#')&&process.env[l.slice(0,i).trim()]===undefined)process.env[l.slice(0,i).trim()]=l.slice(i+1).trim().replace(/^['"]|['"]$/g,'')}
