@@ -1,0 +1,6 @@
+{
+  "name": "phantom-cards-data-bundle-site",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": { "dev": "NODE_ENV=development PORT=4000 SITE_B_BASE_URL=http://localhost:4000 SITE_A_BASE_URL=http://localhost:3000 node server.js", "start": "node server.js", "test": "node --test --test-concurrency=1 test/*.test.js" }
+}
